@@ -5,8 +5,10 @@ using System.ComponentModel;
 using System.Data;
 using System.Data.SqlClient;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
@@ -18,17 +20,19 @@ namespace BulkMD5
         [ThreadStatic] List<Task> tasks = new List<Task>();
         [ThreadStatic] List<ImageDetails> imgs = new List<ImageDetails>();
 
+
         int DOWNLOAD_BATCH_SIZE = int.Parse(System.Configuration.ConfigurationManager.AppSettings.Get("DOWNLOAD_BATCH_SIZE"));
+        public const string ImageDownLoadRequestUserAgent = "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:24.0) Gecko/20100101 Firefox/24.0";
         public void GetImgs()
         {
-           
+
             try
             {
                 using (var connection = new SqlConnection(System.Configuration.ConfigurationManager.ConnectionStrings["SSFDB"].ConnectionString))
                 {
                     connection.Open();
 
-                    string query = @"select top 10000 i.id, i.imageurl from images i
+                    string query = @"select top 25000 i.id, i.imageurl from images i
                                     join Feeds f on f.ID = i.FeedID
                                     where f.IsActive = 1
                                     order by i.id desc";
@@ -40,15 +44,27 @@ namespace BulkMD5
                 for (int i = 0; i < imgs.Count; i++)
                 {
                     imgSubSet = imgs.Skip(i * DOWNLOAD_BATCH_SIZE).Take(DOWNLOAD_BATCH_SIZE).ToList();
+
                     DownloadFiles(imgSubSet);
-                    Task.WaitAll(tasks.ToArray());
-                    InsertHashes(imgSubSet);
+
+                    try
+                    {
+                        Task.WaitAll(tasks.ToArray());
+                    }
+                    catch (Exception te)
+                    {
+                        Debug.Print(te.Message);
+                        Debug.Print(te.StackTrace);
+                    }
+
+                    //InsertHashes(imgSubSet);
                 }
 
             }
             catch (Exception e)
             {
                 Debug.Print(e.Message);
+                Debug.Print(e.StackTrace);
             }
         }
 
@@ -57,29 +73,18 @@ namespace BulkMD5
 
             try
             {
-
-                GetEligibleWorkingURLs(imgs);
-
-                //ServicePointManager.DefaultConnectionLimit = int.MaxValue;
-                Parallel.ForEach(imgs, new ParallelOptions { MaxDegreeOfParallelism = 5 }, (img) =>
+                Parallel.ForEach(imgs, new ParallelOptions { MaxDegreeOfParallelism = 8 }, (img) =>
                 {
-                    if (img.isValid)
-                    {
-                        var task = DownloadFile(img);
+                    var task = Task.Run(() => DownloadFile(img));
 
-                        if (task != null)
-                        {
-                            tasks.Add(task);
-                        }
+                    if (task != null)
+                    {
+                        tasks.Add(task);
+                        //task.Wait();
                     }
-                    
+
                 });
-                //foreach (var img in imgs)
-                //{
-                //    var task = DownloadFile(img);
-                //    tasks.Add(task);
-                //}
-                //Task.WaitAll(tasks.ToArray());
+
             }
             catch (Exception eex)
             {
@@ -88,155 +93,55 @@ namespace BulkMD5
 
         }
 
-        private void GetEligibleWorkingURLs(List<ImageDetails> imgs)
-        {
-           
-            try
-            {
-                Parallel.ForEach(imgs, new ParallelOptions { MaxDegreeOfParallelism = 1 }, (img) =>
-                {
-                    try
-                    {
-                        var request = (HttpWebRequest)WebRequest.Create(img.ImageUrl);
-                        request.Timeout = 1000;
-                        request.Method = "HEAD";
 
-                        using (var response = (HttpWebResponse)request.GetResponse())
-                        {
-                            if (response.StatusCode == HttpStatusCode.OK && response.ContentType.Contains("image"))
-                            {
-                                img.isValid = true;
-                                
-                            }
-                        }
-                    }
-                    catch (WebException we)
-                    {
-                        Debug.Print(we.StackTrace);
-                    }
-                });
-            }
-            catch (Exception eeeee)
-            {
-                Debug.Print(eeeee.StackTrace);
-                throw;
-            }
-
-            
-        }
-
-        private Task DownloadFile(ImageDetails img)
-        {
-            
-                //using (WebClient wc = new WebClient())
-                using (DwnldWebClient wc = new DwnldWebClient())
-                {
-                    Uri uri = new Uri(img.ImageUrl);
-
-                    //string formatedName = string.Format("{0}_{1:yyyy_MM_dd_hh_mm_ss_fff}", img.ID, DateTime.Now);
-                    string formatedName = string.Format("{0}", img.ID);
-
-                    string downloadToDirectory = @"C:\Users\Abhi\Documents\hashes\" + formatedName;
-
-                    img.pathOnDisk = downloadToDirectory;
-
-                    wc.DownloadProgressChanged += (object sender, DownloadProgressChangedEventArgs e) =>
-                    {
-                    //Debug.Print(e.ProgressPercentage + "% downloaded.");
-                        
-                    };
-
-
-                    try
-                    {
-                        wc.DownloadFileCompleted += (object sender, AsyncCompletedEventArgs e) =>
-                                {
-                                    WebClient _wc = (WebClient)sender;
-
-                                    var md5 = MD5.Create();
-                                    try
-                                    {
-                                        string hash = BitConverter.ToString(md5.ComputeHash(_wc.OpenRead(img.pathOnDisk))).Replace("-", string.Empty);
-                                        img.hash = hash;
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        img.hash = "00000000000000000000000000000000";
-                                    }
-
-
-                                //Debug.Print("{0} was downloaded.", img.ImageUrl);
-                                // TODO: Signal this "Task" is done
-
-                            };
-                    }
-                    catch (Exception eex)
-                    {
-
-                        img.hash = "00000000000000000000000000000000";
-                    }
-
-
-                    wc.DownloadDataCompleted += (object sender, DownloadDataCompletedEventArgs e) =>
-                    {
-                        WebClient _wc = (WebClient)sender;
-
-                        var md5 = MD5.Create();
-
-                        try
-                        {
-                            string hash = BitConverter.ToString(md5.ComputeHash(_wc.OpenRead(uri))).Replace("-", string.Empty);
-                            img.hash = hash;
-                        }
-                        catch (Exception ex)
-                        {
-                            img.hash = "00000000000000000000000000000000";
-                        }
-                    //Debug.Print("{0} was downloaded.", img.ImageUrl);
-                    // TODO: Signal this "Task" is done
-
-                };
-
-                    return wc.DownloadFileTaskAsync(uri, downloadToDirectory);
-                    //return wc.DownloadDataTaskAsync(img.ImageUrl);
-                }
-
-           
-
-        }
-
-        public void InsertHashes(List<ImageDetails> imgs)
+        private async Task DownloadFile(ImageDetails img)
         {
             try
             {
+                Uri uri = new Uri(img.ImageUrl);
 
-                DataTable table = new DataTable();
-                table.Columns.Add("ID", typeof(int));
-                table.Columns.Add("Image_ID", typeof(int));
-                table.Columns.Add("Hash", typeof(string));
+                //string formatedName = string.Format("{0}_{1:yyyy_MM_dd_hh_mm_ss_fff}", img.ID, DateTime.Now);
+                string formatedName = string.Format("{0}", img.ID);
 
-                foreach (var img in imgs)
-                {
-                    DataRow row = table.NewRow();
-                    row["Image_ID"] = img.ID;
-                    row["Hash"] = img.hash;
+                string downloadToDirectory = @"C:\Users\Abhi\Documents\hashes\" + formatedName;
 
-                    table.Rows.Add(row);
+                img.pathOnDisk = downloadToDirectory;
 
-                }
+                HttpWebRequest httpWebRequest = (HttpWebRequest)HttpWebRequest.Create(uri);
+                httpWebRequest.MaximumAutomaticRedirections = 1;
+                httpWebRequest.UserAgent = ImageDownLoadRequestUserAgent;
+                httpWebRequest.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
 
-                using (var sqlBulk = new SqlBulkCopy(System.Configuration.ConfigurationManager.ConnectionStrings["SSFDB"].ConnectionString))
-                {
+                IAsyncResult ar = httpWebRequest.BeginGetResponse(GetAsyncResponse, new object[] { httpWebRequest, formatedName });
 
-                    sqlBulk.DestinationTableName = "Images_Hashes";
-                    sqlBulk.WriteToServer(table);
-                }
-
-
+                
+            }
+            catch (WebException we)
+            {
+                Debug.Print(we.Message);
+                Debug.Print(we.StackTrace);
             }
             catch (Exception e)
             {
+                Debug.Print(e.Message);
                 Debug.Print(e.StackTrace);
+            }
+
+        }
+
+        private void GetAsyncResponse(IAsyncResult result)
+        {
+            object[] p = (object[])result.AsyncState;
+            HttpWebRequest request = (HttpWebRequest)p[0];
+            string fileName = (string)p[1];
+            
+            var response = request.GetResponse();
+            var httpResp = (HttpWebResponse)response;
+
+            using (var respStream = httpResp.GetResponseStream())
+            using (var fStream = File.Create(fileName))
+            {
+                respStream.CopyTo(fStream);
             }
         }
     }

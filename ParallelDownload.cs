@@ -13,6 +13,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Dapper;
 using System.Collections.Generic;
+using Serilog;
 
 namespace BulkMD5
 {
@@ -23,6 +24,7 @@ namespace BulkMD5
         [ThreadStatic] int rejects = 0;
 
         int DOWNLOAD_BATCH_SIZE = int.Parse(System.Configuration.ConfigurationManager.AppSettings.Get("DOWNLOAD_BATCH_SIZE"));
+        private readonly string INVALID_TYPE_ERROR = "Not an image";
         public void GetImgs()
         {
 
@@ -32,9 +34,12 @@ namespace BulkMD5
                 {
                     connection.Open();
 
-                    string query = @"select top 100000 i.id, i.imageurl from images i
-                                    join Feeds f on f.ID = i.FeedID
+                    string query = @"select top 10000 i.id, i.imageurl from images i with(nolock)
+                                    join Feeds f with(nolock) on f.ID = i.FeedID
                                     where f.IsActive = 1
+                                    and i.id not in(
+                                        select image_ID from Images_Hashes with(nolock)
+                                    )
                                     order by i.id desc";
 
                     imgs = connection.Query<ImageDetails>(query).ToList();
@@ -56,6 +61,7 @@ namespace BulkMD5
                 try
                 {
                     Task.WaitAll(tasks.ToArray());
+                    //InsertHashes(imgSubSet);
                 }
                 catch (Exception e)
                 {
@@ -63,22 +69,12 @@ namespace BulkMD5
                     Debug.Print(e.StackTrace);
                 }
 
-                //InsertHashes(imgSubSet);
+                
             }
 
-            //Parallel.ForEach(imgs, new ParallelOptions { MaxDegreeOfParallelism = 8 }, (img) =>
-            //{
-            //    var task = DownloadFile(img);
-            //    if (task != null)
-            //    {
-            //        tasks.Add(task);
-            //    }
-
-            //});
-
-            //Task.WaitAll(tasks.ToArray());
-
-            Debug.Print("Total images rejected {0}", rejects);
+            CalculateAndInsertMD5();
+            Log.Information("Total images rejected {0}", rejects);
+            //Debug.Print("Total images rejected {0}", rejects);
         }
 
         private void DownloadFiles(List<ImageDetails> imgs)
@@ -99,6 +95,8 @@ namespace BulkMD5
                     }
                     catch (Exception e)
                     {
+                        img.error = e.Message;
+
                         Debug.Print(e.Message);
                         Debug.Print(e.StackTrace);
                     }
@@ -161,21 +159,23 @@ namespace BulkMD5
                 img.pathOnDisk = downloadToDirectory;
 
                 var request = (HttpWebRequest)WebRequest.Create(uri);
-                request.Timeout = 500;
+                request.Timeout = 1000;
                 request.Method = "HEAD";
 
                 try
                 {
+                    
                     using (var response = (HttpWebResponse)request.GetResponse())
                     {
                         if (response.StatusCode == HttpStatusCode.OK && response.ContentType.Contains("image"))
                         {
-                            
+
                             return wc.DownloadFileTaskAsync(uri, downloadToDirectory);
 
                         }
                         else
                         {
+                            img.error = INVALID_TYPE_ERROR;
                             rejects++;
                             return null;
                         }
@@ -183,6 +183,8 @@ namespace BulkMD5
                 }
                 catch (System.Net.WebException ex)
                 {
+                    img.error = ex.Message;
+
                     Debug.Print(ex.Message);
                     Debug.Print(ex.StackTrace);
                     rejects++;
@@ -190,6 +192,8 @@ namespace BulkMD5
                 }
                 catch (Exception ex)
                 {
+                    img.error = ex.Message;
+
                     Debug.Print(ex.Message);
                     Debug.Print(ex.StackTrace);
                     rejects++;
@@ -201,7 +205,47 @@ namespace BulkMD5
 
         }
 
-        public void InsertHashes(List<ImageDetails> imgs)
+        private void CalculateAndInsertMD5()
+        {
+            Stopwatch watch = new Stopwatch();
+            watch.Start();
+
+
+            var dir = Directory.CreateDirectory(@"C:\Users\Abhi\Documents\hashes\");
+            var files = dir.GetFiles();
+            List<ImageDetails> iHash = new List<ImageDetails>();
+
+            Parallel.ForEach(files, new ParallelOptions { MaxDegreeOfParallelism = 8 }, (file) =>
+            {
+                
+                using (var fStream = file.OpenRead())
+                {
+                    ImageDetails details = new ImageDetails();
+                    details.ID = Int32.Parse(file.Name);
+                    if (file.Length > 0)
+                    {
+                        var md5 = MD5.Create();
+                        details.hash = BitConverter.ToString(md5.ComputeHash(fStream)).Replace("-", string.Empty);
+                    }
+                    
+                    iHash.Add(details);
+                }
+            });
+
+
+            //iHash.Union(imgs.Where(x => !iHash.Select(y => y.ID).Contains(x.ID)));
+            var exclusions = imgs.Where(x => !iHash.Any(y => y.ID == x.ID));
+            var allImgs =  iHash.Union(exclusions);
+
+            InsertHashes(allImgs);
+
+            watch.Stop();
+
+            Log.Information("Hashes processed in {0} mins", ((float)watch.ElapsedMilliseconds / (float)60000));
+            //Debug.Print("Hashes processed in {0} mins", ((float)watch.ElapsedMilliseconds / (float)60000));
+        }
+
+        public void InsertHashes(IEnumerable<ImageDetails> imgs)
         {
             try
             {
@@ -210,12 +254,14 @@ namespace BulkMD5
                 table.Columns.Add("ID", typeof(int));
                 table.Columns.Add("Image_ID", typeof(int));
                 table.Columns.Add("Hash", typeof(string));
+                table.Columns.Add("Error", typeof(string));
 
                 foreach (var img in imgs)
                 {
                     DataRow row = table.NewRow();
                     row["Image_ID"] = img.ID;
                     row["Hash"] = img.hash;
+                    row["Error"] = img.error;
 
                     table.Rows.Add(row);
 

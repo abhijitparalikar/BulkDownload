@@ -12,9 +12,9 @@ namespace BulkMD5
         protected override WebRequest GetWebRequest(Uri uri)
         {
             HttpWebRequest request = base.GetWebRequest(uri) as HttpWebRequest;
-            request.Timeout = 500;
+            request.Timeout = 5000;
             request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
-            request.MaximumAutomaticRedirections = 1;
+            //request.MaximumAutomaticRedirections = 1;
             //request.AllowAutoRedirect = false;
             return request;
         }

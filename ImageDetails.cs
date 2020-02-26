@@ -12,7 +12,6 @@ namespace BulkMD5
         public string ImageUrl { get; set; }
         public string pathOnDisk { get; set; }
         public string hash { get; set; }
-
-        public bool isValid { get ; set; }
+        public string error { get; set; }
     }
 }
