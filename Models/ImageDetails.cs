@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace BulkMD5
+namespace BulkMD5.Models
 {
     public class ImageDetails
     {

@@ -151,7 +151,11 @@
       <SubType>Component</SubType>
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Compile>
-    <Compile Include="ImageDetails.cs" />
+    <Compile Include="HashBBHDevImages.cs" />
+    <Compile Include="HashUnitPlanImages.cs" />
+    <Compile Include="Models\BuzzBuzz_Developments_UnitPlans.cs" />
+    <Compile Include="Models\BuzzBuzz_Developments_UserImage.cs" />
+    <Compile Include="Models\ImageDetails.cs" />
     <Compile Include="MD5Hash.cs" />
     <Compile Include="ParallelDownload.cs" />
     <Compile Include="Program.cs" />

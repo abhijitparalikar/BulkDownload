@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
+using BulkMD5.Models;
 
 namespace BulkMD5
 {

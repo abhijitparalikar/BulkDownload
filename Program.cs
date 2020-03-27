@@ -20,28 +20,34 @@ namespace BulkMD5
             .WriteTo.Console()
             .WriteTo.File(string.Format(@"C:\temp\md5\{0}",logFileType), rollingInterval: RollingInterval.Day)
             .CreateLogger();
-
+            /*
             Stopwatch watch = new Stopwatch();
 
             ParallelDownload pd = new ParallelDownload();
             watch.Start();
             pd.GetImgs();
+            
             watch.Stop();
 
             Log.Information("Images processed in {0} mins", ((float)watch.ElapsedMilliseconds / (float)60000));
-            //Debug.Print("Images processed in {0} mins", ((float)watch.ElapsedMilliseconds / (float)60000));
+            */
+
+            Stopwatch watch = new Stopwatch();
+
+            HashBBHDevImages hashbbh = new HashBBHDevImages();
+            watch.Start();
+            hashbbh.GetImgs();
+
+            watch.Stop();
 
 
-            //AsyncDownload ad = new AsyncDownload();
+            //Stopwatch watch = new Stopwatch();
 
+            //HashUnitPlanImages hashUnitPlans = new HashUnitPlanImages();
             //watch.Start();
-            //ad.GetImgs();
+            //hashUnitPlans.GetImgs();
 
             //watch.Stop();
-
-            //Log.Information("Images processed in {0} mins", ((float)watch.ElapsedMilliseconds / (float)60000));
-            ////Debug.Print(Images processed in {0} mins", ((float)watch.ElapsedMilliseconds / (float)60000));
-
         }
 
     }

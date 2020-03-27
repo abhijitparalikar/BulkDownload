@@ -117,6 +117,7 @@ C:\Github\BulkDwnld\bin\Debug\System.Memory.xml
 C:\Github\BulkDwnld\bin\Debug\System.Numerics.Vectors.xml
 C:\Github\BulkDwnld\bin\Debug\System.Runtime.CompilerServices.Unsafe.xml
 C:\Github\BulkDwnld\bin\Debug\System.Threading.Tasks.Extensions.xml
+C:\Github\BulkDwnld\obj\Debug\BulkDwnld.csproj.CoreCompileInputs.cache
 C:\Github\BulkDwnld\obj\Debug\BulkDwnld.csproj.CopyComplete
 C:\Github\BulkDwnld\obj\Debug\BulkMD5.exe
 C:\Github\BulkDwnld\obj\Debug\BulkMD5.pdb

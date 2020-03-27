@@ -10,6 +10,7 @@ using System.Security.Cryptography;
 using System.Threading.Tasks;
 using Dapper;
 using xxHashSharp;
+using BulkMD5.Models;
 
 namespace BulkMD5
 {
