@@ -58,7 +58,7 @@ namespace BulkMD5
                                     )
                                     and up.PlanID not in
                                     (
-	                                    select planid from Hashes_UnitsPlans_Images_test
+	                                    select planid from Hashes_UnitsPlans_Images
                                     )", ssfDBName);
 
                     imgs = connection.Query<BuzzBuzz_Developments_UnitPlans>(query, commandTimeout: 240).ToList();
