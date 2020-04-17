@@ -10,7 +10,7 @@ namespace BulkMD5
             string logFile = "log-debug.log";
 
 #if DEBUG
-            logFileType = "log-debug.log";
+            logFile = "log-debug.log";
 #else
             logFile = "log-release.log";
 #endif
@@ -31,8 +31,6 @@ namespace BulkMD5
 
             Log.Information("Images processed in {0} mins", ((float)watch.ElapsedMilliseconds / (float)60000));
             */
-
-
 
             //HashBBHDevImages hashbbh = new HashBBHDevImages();
             //watch.Start();

@@ -43,23 +43,28 @@ namespace BulkMD5
                 {
                     connection.Open();
 
-                    string query = string.Format(@"select top 100000 d.DevelopmentID, up.PlanID, up.UnitID, up.WikiHistoryID, up.PlanName, up.PlanImage from BuzzBuzz_Developments_UnitPlans up with(nolock)
+                    //string query = string.Format(@"select top 100000 d.DevelopmentID, up.PlanID, up.UnitID, up.WikiHistoryID, up.PlanName, up.PlanImage from BuzzBuzz_Developments_UnitPlans up with(nolock)
+                    //                join BuzzBuzz_Developments_Units u with(nolock) on u.UnitID = up.UnitID
+                    //                join BuzzBuzz_Developments_Collections c with(nolock) on c.CollectionID = u.CollectionID
+                    //                join BuzzBuzz_Developments d with(nolock) on d.DevelopmentID = c.DevelopmentID
+                    //                join [{0}].dbo.mappings m on m.objectid = d.developmentid
+                    //                where d.isActive = 1
+                    //                and ((d.IsHomeForRent = 1 and d.LeasingStatusID != 3) or (d.IsHomeForSale = 1 and d.SellingStatusID != 3))                                    
+                    //                and up.PlanID not in
+                    //                (
+                    //                 select planid from Hashes_UnitsPlans_Images
+                    //                )", ssfDBName);
+
+                    string query = @"select top 100000 d.DevelopmentID, up.PlanID, up.UnitID, up.WikiHistoryID, up.PlanName, up.PlanImage from BuzzBuzz_Developments_UnitPlans up with(nolock)
                                     join BuzzBuzz_Developments_Units u with(nolock) on u.UnitID = up.UnitID
                                     join BuzzBuzz_Developments_Collections c with(nolock) on c.CollectionID = u.CollectionID
                                     join BuzzBuzz_Developments d with(nolock) on d.DevelopmentID = c.DevelopmentID
                                     where d.isActive = 1
-                                    and ((d.IsHomeForRent = 1 and d.LeasingStatusID != 3) or (d.IsHomeForSale = 1 and d.SellingStatusID != 3))
-                                    and d.DevelopmentID in
-                                    (
-	                                    select distinct m.objectid from [{0}].dbo.Mappings m
-	                                    where m.FeedObjectID is not null
-	                                    and m.Status in (1,2)
-	                                    and m.MapType = 2
-                                    )
+                                    and ((d.IsHomeForRent = 1 and d.LeasingStatusID != 3) or (d.IsHomeForSale = 1 and d.SellingStatusID != 3))                                    
                                     and up.PlanID not in
                                     (
 	                                    select planid from Hashes_UnitsPlans_Images
-                                    )", ssfDBName);
+                                    )";
 
                     imgs = connection.Query<BuzzBuzz_Developments_UnitPlans>(query, commandTimeout: 240).ToList();
                     Log.Information("Processing {0} images", imgs.Count);
@@ -90,10 +95,19 @@ namespace BulkMD5
                 }
                 catch (Exception e)
                 {
-                    Log.Error(e.Message);
+                    Log.Error("Task "+ i +" errored out: "+  e.Message);
+                    Log.Error(e.InnerException.Message);
+                    
                     Log.Error(e.StackTrace);
+                    
+
                     Debug.Print(e.Message);
                     //Debug.Print(e.StackTrace);
+
+                    if (e.InnerException.Message.Contains("(500) Internal Server Error"))
+                    {
+                        Debug.Print("");
+                    }
                 }
 
 
@@ -116,7 +130,7 @@ namespace BulkMD5
                 try
                 {
                     var task = DownloadFile(img);
-
+                    
                     if (task != null)
                     {
                         tasks.Add(task);
@@ -144,7 +158,8 @@ namespace BulkMD5
                 string fullImagePath = string.Concat(UNITPLAN_IMG_S3_PATH + "/" + img.PlanImage);
                 Uri uri = new Uri(fullImagePath);
 
-                img.FormattedName = string.Format("{0}_{1}", img.PlanID, img.PlanImage);
+                img.FormattedName =  img.PlanImage.Length < 150 ? string.Format("{0}_{1}", img.PlanID, img.PlanImage) 
+                    : string.Format("{0}_{1:yyyy_MM_dd_hh_mm_ss_fff}", img.PlanID.ToString(), DateTime.Now);
                
                 string downloadToDirectory = string.Concat(DownloadDirectory + "/" + img.FormattedName);
 
@@ -161,7 +176,15 @@ namespace BulkMD5
                         //if (response.StatusCode == HttpStatusCode.OK && response.ContentType.Contains("image") || img.ImageFile.EndsWith(".ashx"))
                         if (response.StatusCode == HttpStatusCode.OK)
                         {
+                            /* To set up each task with cancellation token
+                             * so that errored out tasks can be cancelled
+                             */
+                            /*
+                            CancellationTokenSource tokenSource = new CancellationTokenSource();
+                            CancellationToken token = tokenSource.Token;
 
+                            return Task.Factory.StartNew(() => wc.DownloadFileTaskAsync(uri, downloadToDirectory), token);
+                            */
                             return wc.DownloadFileTaskAsync(uri, downloadToDirectory);
 
                         }
@@ -269,7 +292,7 @@ namespace BulkMD5
                     sqlBulk.WriteToServer(table);
                 }
 
-
+                table.Dispose();
             }
             catch (Exception e)
             {

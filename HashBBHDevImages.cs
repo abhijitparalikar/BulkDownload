@@ -44,21 +44,26 @@ namespace BulkMD5
                 {
                     connection.Open();
 
-                    string query = string.Format(@"select top 100000 ui.DevelopmentID, ui.ImageID, ui.ImageFile from BuzzBuzz_Developments_UserImages ui with(nolock)
+                    //string query = string.Format(@"select top 100000 ui.DevelopmentID, ui.ImageID, ui.ImageFile from BuzzBuzz_Developments_UserImages ui with(nolock)
+                    //                join buzzbuzz_developments d with(nolock) on d.DevelopmentID = ui.DevelopmentID
+                    //                join [{0}].dbo.mappings m on m.objectid = d.developmentid
+                    //                where d.isActive = 1
+                    //                and ui.CategoryID != 5      
+                    //                and ui.ImageID not in
+                    //                (
+                    //                 select ImageID from Hashes_Development_Images with(nolock)
+                    //                )
+                    //                ", ssfDBName);
+
+                    string query = @"select top 100000 ui.DevelopmentID, ui.ImageID, ui.ImageFile from BuzzBuzz_Developments_UserImages ui with(nolock)
                                     join buzzbuzz_developments d with(nolock) on d.DevelopmentID = ui.DevelopmentID
                                     where d.isActive = 1
-                                    and ui.CategoryID != 5
-                                    and d.DevelopmentID in
-                                    (
-	                                    select distinct m.objectid from [{0}].dbo.Mappings m
-	                                    where m.FeedObjectID is not null
-	                                    and m.Status in (1,2)
-	                                    and m.MapType = 2
-                                    )
+                                    and ui.CategoryID != 5      
                                     and ui.ImageID not in
                                     (
 	                                    select ImageID from Hashes_Development_Images with(nolock)
-                                    )", ssfDBName);
+                                    )
+                                    ";
 
                     imgs = connection.Query<BuzzBuzz_Developments_UserImage>(query, commandTimeout: 240).ToList();
                     Log.Information("Processing {0} images", imgs.Count);
@@ -91,6 +96,7 @@ namespace BulkMD5
                 {
                     Log.Error(e.Message);
                     Log.Error(e.StackTrace);
+                    Log.Error(e.InnerException.Message);
                     Debug.Print(e.Message);
                     //Debug.Print(e.StackTrace);
                 }
@@ -143,8 +149,12 @@ namespace BulkMD5
                 string fullImagePath = string.Concat(DEV_IMG_S3_PATH + "/" + img.ImageFile);
                 Uri uri = new Uri(fullImagePath);
 
-                img.FormattedName = string.Format("{0}_{1}", img.ImageID, img.ImageFile);
-               
+                img.FormattedName = img.ImageFile.Length < 150 ? string.Format("{0}_{1}", img.ImageID, img.ImageFile) 
+                    : string.Format("{0}_{1:yyyy_MM_dd_hh_mm_ss_fff}", img.ImageID.ToString(), DateTime.Now);
+
+                //img.FormattedName = img.ImageFile.Length < 150 ? string.Format("{0}_{1:yyyy_MM_dd_hh_mm_ss_fff}_{2}", img.ImageID, DateTime.Now, img.ImageFile) : img.ImageID.ToString();
+
+
                 string downloadToDirectory = string.Concat(DownloadDirectory + "/" + img.FormattedName);
 
                 var request = (HttpWebRequest)WebRequest.Create(uri);
@@ -266,7 +276,7 @@ namespace BulkMD5
                     sqlBulk.WriteToServer(table);
                 }
 
-
+                table.Dispose();
             }
             catch (Exception e)
             {
